@@ -13,14 +13,11 @@ def load_embed_model():
 embed_model = load_embed_model()
 
 # -------------------------------
-# Load Summarization Model (FIXED)
+# Simple Lightweight Summary (FIX)
 # -------------------------------
-@st.cache_resource
-def load_summarizer():
-    from transformers import pipeline
-    return pipeline("text2text-generation", model="google/flan-t5-base")
-
-summarizer = load_summarizer()
+def simple_summary(text):
+    sentences = text.split(".")
+    return ".".join(sentences[:3])  # first 3 sentences
 
 # -------------------------------
 # Load Data
@@ -60,20 +57,16 @@ def retrieve(query, k=3):
     return "\n".join(results)
 
 # -------------------------------
-# Generate Response (NO API)
+# Generate Response (FIXED)
 # -------------------------------
 def generate_response(transcript):
     context = retrieve(transcript)
     full_text = context + "\n" + transcript
 
-    # Summarization (FIXED)
-    summary = summarizer(
-        f"summarize: {full_text}",
-        max_length=150,
-        do_sample=False
-    )[0]['generated_text']
+    # ✅ Simple summary (no crash)
+    summary = simple_summary(full_text)
 
-    # Rule-based Action Extraction
+    # ✅ Action extraction
     action_items = []
     lines = transcript.split(".")
     for line in lines:
