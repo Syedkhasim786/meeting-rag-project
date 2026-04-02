@@ -2,7 +2,6 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from transformers import pipeline
 
 # -------------------------------
 # Load Embedding Model
@@ -14,11 +13,12 @@ def load_embed_model():
 embed_model = load_embed_model()
 
 # -------------------------------
-# Load Summarization Model
+# Load Summarization Model (FIXED)
 # -------------------------------
 @st.cache_resource
 def load_summarizer():
-    return pipeline("summarization", model="facebook/bart-large-cnn")
+    from transformers import pipeline
+    return pipeline("text2text-generation", model="google/flan-t5-base")
 
 summarizer = load_summarizer()
 
@@ -64,13 +64,16 @@ def retrieve(query, k=3):
 # -------------------------------
 def generate_response(transcript):
     context = retrieve(transcript)
-
     full_text = context + "\n" + transcript
 
-    # Summarize
-    summary = summarizer(full_text, max_length=130, min_length=30, do_sample=False)[0]['summary_text']
+    # Summarization (FIXED)
+    summary = summarizer(
+        f"summarize: {full_text}",
+        max_length=150,
+        do_sample=False
+    )[0]['generated_text']
 
-    # Basic rule-based extraction
+    # Rule-based Action Extraction
     action_items = []
     lines = transcript.split(".")
     for line in lines:
@@ -78,13 +81,13 @@ def generate_response(transcript):
             action_items.append(line.strip())
 
     return f"""
-### Summary:
+### 📌 Summary:
 {summary}
 
-### Action Items:
+### ✅ Action Items:
 {chr(10).join(action_items) if action_items else "No clear actions found"}
 
-### Note:
+### ⚠️ Note:
 Owners and deadlines may need manual review.
 """
 
@@ -95,7 +98,7 @@ st.title("📊 Meeting Notes → Action Items (FREE RAG)")
 
 transcript = st.text_area("Paste your meeting transcript here...")
 
-if st.button("Generate"):
+if st.button("Generate Action Items"):
     if transcript.strip() != "":
         result = generate_response(transcript)
         st.write(result)
