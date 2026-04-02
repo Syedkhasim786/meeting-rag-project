@@ -2,16 +2,25 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from openai import OpenAI
+from transformers import pipeline
 
 # -------------------------------
-# Load Model
+# Load Embedding Model
 # -------------------------------
 @st.cache_resource
-def load_model():
+def load_embed_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
-model = load_model()
+embed_model = load_embed_model()
+
+# -------------------------------
+# Load Summarization Model
+# -------------------------------
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="facebook/bart-large-cnn")
+
+summarizer = load_summarizer()
 
 # -------------------------------
 # Load Data
@@ -30,12 +39,12 @@ texts = load_data()
 # Create FAISS Index
 # -------------------------------
 def create_index(texts):
-    embeddings = model.encode(texts)
+    embeddings = embed_model.encode(texts)
     dimension = embeddings.shape[1]
-    
+
     index = faiss.IndexFlatL2(dimension)
     index.add(np.array(embeddings))
-    
+
     return index
 
 index = create_index(texts)
@@ -44,59 +53,49 @@ index = create_index(texts)
 # Retrieve Context
 # -------------------------------
 def retrieve(query, k=3):
-    query_embedding = model.encode([query])
+    query_embedding = embed_model.encode([query])
     distances, indices = index.search(np.array(query_embedding), k)
-    
+
     results = [texts[i] for i in indices[0]]
     return "\n".join(results)
 
 # -------------------------------
-# Generate Response (RAG)
+# Generate Response (NO API)
 # -------------------------------
-client = OpenAI()
-
 def generate_response(transcript):
     context = retrieve(transcript)
 
-    prompt = f"""
-Summarise this meeting transcript into:
+    full_text = context + "\n" + transcript
 
-1. A 3-sentence overview
-2. Key decisions made
-3. Open questions
-4. A numbered action list with:
-   - Owner
-   - Deadline
-   - Reason
+    # Summarize
+    summary = summarizer(full_text, max_length=130, min_length=30, do_sample=False)[0]['summary_text']
 
-Rules:
-- If no owner → mark as **Owner: TBD**
-- Highlight conflicts under "Conflicts to resolve"
+    # Basic rule-based extraction
+    action_items = []
+    lines = transcript.split(".")
+    for line in lines:
+        if "will" in line.lower():
+            action_items.append(line.strip())
 
-Context from previous meetings:
-{context}
+    return f"""
+### Summary:
+{summary}
 
-Transcript:
-{transcript}
+### Action Items:
+{chr(10).join(action_items) if action_items else "No clear actions found"}
+
+### Note:
+Owners and deadlines may need manual review.
 """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return response.choices[0].message.content
 
 # -------------------------------
 # Streamlit UI
 # -------------------------------
-st.title("📊 Meeting Notes → Action Items (RAG)")
+st.title("📊 Meeting Notes → Action Items (FREE RAG)")
 
 transcript = st.text_area("Paste your meeting transcript here...")
 
-if st.button("Generate Action Items"):
+if st.button("Generate"):
     if transcript.strip() != "":
         result = generate_response(transcript)
         st.write(result)
