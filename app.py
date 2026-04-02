@@ -13,11 +13,11 @@ def load_embed_model():
 embed_model = load_embed_model()
 
 # -------------------------------
-# Simple Lightweight Summary (FIX)
+# Simple Summary Function
 # -------------------------------
 def simple_summary(text):
     sentences = text.split(".")
-    return ".".join(sentences[:3])  # first 3 sentences
+    return ".".join(sentences[:3]) if len(sentences) >= 3 else text
 
 # -------------------------------
 # Load Data
@@ -27,7 +27,7 @@ def load_data():
         with open("data/meetings.txt", "r") as f:
             texts = f.readlines()
     except:
-        texts = ["No previous meeting data available."]
+        texts = ["Project discussion with no prior data."]
     return texts
 
 texts = load_data()
@@ -35,6 +35,7 @@ texts = load_data()
 # -------------------------------
 # Create FAISS Index
 # -------------------------------
+@st.cache_resource
 def create_index(texts):
     embeddings = embed_model.encode(texts)
     dimension = embeddings.shape[1]
@@ -57,28 +58,35 @@ def retrieve(query, k=3):
     return "\n".join(results)
 
 # -------------------------------
-# Generate Response (FIXED)
+# Extract Action Items
+# -------------------------------
+def extract_actions(transcript):
+    actions = []
+    lines = transcript.split(".")
+
+    for line in lines:
+        line = line.strip()
+        if "will" in line.lower():
+            actions.append(f"- {line}")
+
+    return actions if actions else ["No clear action items found"]
+
+# -------------------------------
+# Generate Response
 # -------------------------------
 def generate_response(transcript):
     context = retrieve(transcript)
     full_text = context + "\n" + transcript
 
-    # ✅ Simple summary (no crash)
     summary = simple_summary(full_text)
-
-    # ✅ Action extraction
-    action_items = []
-    lines = transcript.split(".")
-    for line in lines:
-        if "will" in line.lower():
-            action_items.append(line.strip())
+    actions = extract_actions(transcript)
 
     return f"""
 ### 📌 Summary:
 {summary}
 
 ### ✅ Action Items:
-{chr(10).join(action_items) if action_items else "No clear actions found"}
+{chr(10).join(actions)}
 
 ### ⚠️ Note:
 Owners and deadlines may need manual review.
@@ -89,11 +97,13 @@ Owners and deadlines may need manual review.
 # -------------------------------
 st.title("📊 Meeting Notes → Action Items (FREE RAG)")
 
-transcript = st.text_area("Paste your meeting transcript here...")
+st.write("Paste your meeting transcript and generate summary & actions.")
+
+transcript = st.text_area("Enter transcript here...")
 
 if st.button("Generate Action Items"):
-    if transcript.strip() != "":
+    if transcript.strip():
         result = generate_response(transcript)
-        st.write(result)
+        st.markdown(result)
     else:
         st.warning("Please enter a meeting transcript.")
