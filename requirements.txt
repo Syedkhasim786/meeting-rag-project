@@ -2,5 +2,5 @@ streamlit
 faiss-cpu
 sentence-transformers
 numpy
-transformers
+transformers==4.36.2
 torch
